@@ -143,3 +143,4 @@ results/mappo_poi_capture_mlp__xxxx/
     ├── scalars/                         ← CSV logs (rewards over time, etc.)
     └── videos/                          ← only if you trained with --render
 ```
+
