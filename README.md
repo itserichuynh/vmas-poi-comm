@@ -81,44 +81,6 @@ python play.py --checkpoint results/<run name>/checkpoints/checkpoint_10020000.p
 
 ---
 
-## Trying experiments
-
-All the settings can be changed from the command line, so you don't need to edit any code. Some useful comparisons:
-
-| Experiment | Command |
-|---|---|
-| Normal (with messages) | `python train.py` |
-| **No messages** | `python train.py --dim_c 0` |
-| Messages get lost 30% of the time | `python train.py --comm_dropout 0.3` |
-| Noisy messages | `python train.py --comm_noise 0.1` |
-| Messages only travel short distances | `python train.py --comm_range 0.5` |
-| More robots and POIs | `python train.py --n_agents 6 --n_pois 4` |
-| Need 3 robots to catch a POI | `python train.py --agents_per_poi 3` |
-| Different algorithm | `python train.py --algo ippo` (or `masac`) |
-| Different random seed | `python train.py --seed 1` |
-
-You can combine them, e.g. `python train.py --dim_c 0 --seed 1`.
-
-To see every option: `python train.py --help` and `python play.py --help`.
-
-### What the main settings mean
-
-| Setting | Default | Meaning |
-|---|---|---|
-| `--n_agents` | 4 | Number of robots |
-| `--n_pois` | 3 | Number of POIs |
-| `--agents_per_poi` | 2 | Robots needed on a POI at the same time to catch it |
-| `--sensing_range` | 0.35 | How far a robot can see (the arena goes from -1 to 1) |
-| `--dim_c` | 4 | Size of each message. `0` = no messages |
-| `--comm_range` | 1.0 | How far messages travel |
-| `--comm_dropout` | 0.0 | Chance a message gets lost |
-| `--comm_noise` | 0.0 | Random noise added to messages |
-| `--max_steps` | 200 | Length of one episode |
-| `--frames` | 10,000,000 | Total training steps |
-| `--algo` | mappo | Training algorithm: `mappo`, `ippo` or `masac` |
-
----
-
 ## How the robots are rewarded
 
 The whole team shares one score. Each step:
