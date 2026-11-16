@@ -46,6 +46,9 @@ class Scenario(BaseScenario):
         self.time_penalty = kwargs.pop("time_penalty", -0.01)
         self.collision_penalty = kwargs.pop("collision_penalty", -0.1)
 
+        self.goal_vel = torch.zeros(batch_dim, self.n_pois, 2, device=device)
+        self.poi_speed = kwargs.pop('poi_speed', 0.05)
+
         self.agent_radius = 0.05
         ScenarioUtils.check_kwargs_consumed(kwargs)  # complain about unknown settings (typos)
 
@@ -66,6 +69,7 @@ class Scenario(BaseScenario):
                 collide=True,
                 silent=(self.dim_c == 0),  # no message actions when messages are off
                 c_noise=self.comm_noise,  # fuzz added to messages
+                u_multiplier=2.0,
             )
             robot.collision_reward = torch.zeros(batch_dim, device=device)  # filled in by reward()
             world.add_agent(robot)
@@ -78,6 +82,7 @@ class Scenario(BaseScenario):
                 shape=Sphere(radius=0.03),
                 color=Color.RED,
                 collide=False,  # robots pass through POIs
+                movable=True
             )
             world.add_landmark(poi)
             self.pois.append(poi)
@@ -127,6 +132,28 @@ class Scenario(BaseScenario):
         else:
             self.previous_gap[env_index] = self._gap_to_capture()[env_index]
             self.catches[env_index] = 0
+
+        # in reset_world_at:
+        if env_index is None:
+            self.goal_vel[:] = self._random_velocity(self.world.batch_dim)
+        else:
+            self.goal_vel[env_index] = self._random_velocity(1)[0]
+
+    def _random_velocity(self, n_envs: int) -> Tensor:
+        angle = torch.rand(n_envs, self.n_pois, device=self.world.device) * 2 * torch.pi
+        return self.poi_speed * torch.stack([angle.cos(), angle.sin()], dim=-1)  # [n, POIs, 2]
+        
+    def pre_step(self):
+        for i, poi in enumerate(self.pois):
+            pos = poi.state.pos              # [batch, 2]
+            v = self.goal_vel[:, i]          # [batch, 2]
+    
+            flip = ((pos >= self.arena_size) & (v > 0)) | ((pos <= -self.arena_size) & (v < 0))
+            v = torch.where(flip, -v, v)
+            self.goal_vel[:, i] = v
+    
+            poi.set_pos(pos + v * self.world.dt, batch_index=None)
+
 
     # ------------------------------------------------------------------ #
     # Reward

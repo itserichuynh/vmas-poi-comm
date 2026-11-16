@@ -89,6 +89,7 @@ def parse_args():
     p.add_argument("--algo", choices=["mappo", "ippo", "masac"], default="mappo")
     p.add_argument("--model", choices=["mlp", "gnn"], default="mlp")
     p.add_argument("--frames", type=int, default=10_000_000)
+    # p.add_argument("--frames", type=int, default=10_000)
     p.add_argument("--n_envs", type=int, default=300, help="vectorized envs per collection")
     p.add_argument("--minibatch_iters", type=int, default=45)
     p.add_argument("--seed", type=int, default=0)
