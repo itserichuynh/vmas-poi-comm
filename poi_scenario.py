@@ -1,8 +1,7 @@
 """Cooperative POI capture scenario (VMAS).
 
 Robots must gather on points of interest (POIs) in groups of `agents_per_poi`
-to catch them. Robots only see POIs/teammates within `sensing_range`, and can
-optionally talk to teammates within `comm_range` via `dim_c`-dimensional messages.
+to catch them.
 
 Run this file directly to sanity-check the env and save a GIF of random actions:
     python poi_scenario.py
@@ -19,9 +18,9 @@ from vmas.simulator.utils import Color, ScenarioUtils
 
 # VMAS prints "agent_i sends [...]" in the corner of every rendered frame when dim_c > 0.
 # Set to True to bring that text back.
-SHOW_MESSAGE_TEXT = False
-if not SHOW_MESSAGE_TEXT:
-    Environment._set_agent_comm_messages = lambda self, env_index: None
+# SHOW_MESSAGE_TEXT = False
+# if not SHOW_MESSAGE_TEXT:
+#     Environment._set_agent_comm_messages = lambda self, env_index: None
 
 
 class Scenario(BaseScenario):
@@ -33,12 +32,12 @@ class Scenario(BaseScenario):
         self.n_pois = kwargs.pop("n_pois", 3)
         self.agents_per_poi = kwargs.pop("agents_per_poi", 2)
         self.arena_size = kwargs.pop("arena_size", 1.0)
-        self.sensing_range = kwargs.pop("sensing_range", 0.35)
+        self.sensing_range = kwargs.pop("sensing_range", 0.5)
 
-        self.dim_c = kwargs.pop("dim_c", 4)
+        # self.dim_c = kwargs.pop("dim_c", 0)
         self.comm_range = kwargs.pop("comm_range", 1.0)
-        self.comm_dropout = kwargs.pop("comm_dropout", 0.0)
-        self.comm_noise = kwargs.pop("comm_noise", 0.0)
+        # self.comm_dropout = kwargs.pop("comm_dropout", 0.0)
+        # self.comm_noise = kwargs.pop("comm_noise", 0.0)
 
         self.capture_range = kwargs.pop("capture_range", 0.15)
         self.capture_reward = kwargs.pop("capture_reward", 1.0)
@@ -55,7 +54,7 @@ class Scenario(BaseScenario):
         world = World(
             batch_dim,
             device,
-            dim_c=self.dim_c,  # message size (0 = no messages)
+            # dim_c=self.dim_c,  # message size (0 = no messages)
             x_semidim=self.arena_size,  # invisible walls
             y_semidim=self.arena_size,
         )
@@ -67,8 +66,8 @@ class Scenario(BaseScenario):
                 shape=Sphere(radius=self.agent_radius),
                 color=Color.BLUE,
                 collide=True,
-                silent=(self.dim_c == 0),  # no message actions when messages are off
-                c_noise=self.comm_noise,  # fuzz added to messages
+                # silent=(self.dim_c == 0),  # no message actions when messages are off
+                # c_noise=self.comm_noise,  # fuzz added to messages
                 u_multiplier=2.0,
             )
             robot.collision_reward = torch.zeros(batch_dim, device=device)  # filled in by reward()
@@ -196,29 +195,21 @@ class Scenario(BaseScenario):
     # ------------------------------------------------------------------ #
     def observation(self, agent: Agent):
         me = agent.state.pos
-        parts = [agent.state.pos, agent.state.vel]
+        parts = []
 
-        # POIs I can see
+        # POIs
         for poi in self.pois:
             offset = poi.state.pos - me
             can_see = (offset.norm(dim=-1, keepdim=True) < self.sensing_range).float()
             parts += [offset * can_see, can_see]
 
-        # Teammates: where they are (if close) and what they said (if in radio range)
+        # other agents
         for teammate in self.world.agents:
             if teammate is agent:
                 continue
             offset = teammate.state.pos - me
-            distance = offset.norm(dim=-1, keepdim=True)
-
-            can_see = (distance < self.sensing_range).float()
+            can_see = (offset.norm(dim=-1, keepdim=True) < self.sensing_range).float()
             parts += [offset * can_see, can_see]
-
-            if self.dim_c > 0:
-                can_hear = (distance < self.comm_range).float()
-                if self.comm_dropout > 0:
-                    can_hear = can_hear * (torch.rand_like(can_hear) >= self.comm_dropout).float()
-                parts += [teammate.state.c * can_hear, can_hear]
 
         return {
             "obs": torch.cat(parts, dim=-1),
@@ -253,14 +244,14 @@ class Scenario(BaseScenario):
         for poi in self.pois:
             drawings.append(draw_circle(poi.state.pos[env_index], self.capture_range, Color.RED.value))
 
-        if self.dim_c > 0:
-            for i, a in enumerate(self.world.agents):
-                for b in self.world.agents[i + 1 :]:
-                    distance = (a.state.pos[env_index] - b.state.pos[env_index]).norm()
-                    if distance <= self.comm_range:
-                        line = rendering.Line(a.state.pos[env_index], b.state.pos[env_index], width=1)
-                        line.set_color(*Color.BLACK.value)
-                        drawings.append(line)
+        # if self.dim_c > 0:
+        for i, a in enumerate(self.world.agents):
+            for b in self.world.agents[i + 1 :]:
+                distance = (a.state.pos[env_index] - b.state.pos[env_index]).norm()
+                if distance <= self.comm_range:
+                    line = rendering.Line(a.state.pos[env_index], b.state.pos[env_index], width=1)
+                    line.set_color(*Color.BLACK.value)
+                    drawings.append(line)
         return drawings
 
 
@@ -274,7 +265,7 @@ if __name__ == "__main__":
         max_steps=200,
         n_agents=4,
         n_pois=3,
-        dim_c=4,
+        # dim_c=0,
     )
     obs = env.reset()
     print("Robots:", len(env.agents))

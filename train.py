@@ -1,20 +1,5 @@
 """Train agents on the POI capture scenario with BenchMARL.
 
-Examples:
-    # quick smoke test (one iteration)
-    python train.py --frames 6000 --n_envs 30 --minibatch_iters 1
-
-    # full MAPPO run with communication
-    python train.py --algo mappo --frames 10_000_000
-
-    # ablation: no communication
-    python train.py --dim_c 0
-
-    # ablation: lossy radio
-    python train.py --comm_dropout 0.3 --comm_noise 0.1
-
-    # GNN policy (needs torch_geometric)
-    python train.py --model gnn
 
 Results (CSV logs, checkpoints, eval videos) go to ./results/<run name>/.
 """
@@ -48,6 +33,35 @@ if not hasattr(torchvision.io, "write_video"):
 
     torchvision.io.write_video = _write_video
 
+# BenchMARL's GNN builds its graph with torch_geometric's radius_graph, which needs the optional
+# pyg-lib / torch-cluster packages. If they're missing, use a plain-PyTorch version instead.
+# The graphs are tiny (one node per robot), so it's fast.
+try:
+    import torch_geometric
+except ImportError:
+    torch_geometric = None
+
+
+def _radius_graph(x, r, batch=None, loop=False, max_num_neighbors=32, flow="source_to_target", **kwargs):
+    if batch is None:
+        batch = torch.zeros(x.shape[0], dtype=torch.long, device=x.device)
+    n_graphs = int(batch.max()) + 1
+    n_nodes = x.shape[0] // n_graphs  # BenchMARL stacks one equal-size graph per env
+    pos = x.view(n_graphs, n_nodes, -1)
+    connected = torch.cdist(pos, pos) <= r  # [graphs, nodes, nodes]
+    if not loop:
+        connected &= ~torch.eye(n_nodes, dtype=torch.bool, device=x.device)
+    graph, target, source = connected.nonzero(as_tuple=True)
+    offset = graph * n_nodes  # node numbers are global across the stacked graphs
+    return torch.stack([source + offset, target + offset])
+
+
+if torch_geometric is not None:
+    try:
+        torch_geometric.nn.pool.radius_graph(torch.zeros(2, 2), r=1.0)
+    except ImportError:
+        torch_geometric.nn.pool.radius_graph = _radius_graph
+
 
 class PoiTask(VmasClass):
     """BenchMARL task that builds our custom VMAS scenario instead of a built-in one."""
@@ -79,15 +93,15 @@ def parse_args():
     p.add_argument("--n_pois", type=int, default=3)
     p.add_argument("--agents_per_poi", type=int, default=2)
     p.add_argument("--sensing_range", type=float, default=0.35)
-    p.add_argument("--dim_c", type=int, default=4)
+    # p.add_argument("--dim_c", type=int, default=4)
     p.add_argument("--comm_range", type=float, default=1.0)
-    p.add_argument("--comm_dropout", type=float, default=0.0)
-    p.add_argument("--comm_noise", type=float, default=0.0)
+    # p.add_argument("--comm_dropout", type=float, default=0.0)
+    # p.add_argument("--comm_noise", type=float, default=0.0)
     p.add_argument("--closer_reward_weight", type=float, default=1.0)
     p.add_argument("--max_steps", type=int, default=200)
     # Training
     p.add_argument("--algo", choices=["mappo", "ippo", "masac"], default="mappo")
-    p.add_argument("--model", choices=["mlp", "gnn"], default="mlp")
+    p.add_argument("--model", choices=["mlp", "gnn"], default="gnn")
     p.add_argument("--frames", type=int, default=10_000_000)
     # p.add_argument("--frames", type=int, default=10_000)
     p.add_argument("--n_envs", type=int, default=300, help="vectorized envs per collection")
@@ -123,7 +137,8 @@ def make_model(name: str, comm_range: float):
     if name == "mlp":
         return MlpConfig(num_cells=[256, 256], layer_class=torch.nn.Linear, activation_class=torch.nn.Tanh)
 
-    import torch_geometric
+    if torch_geometric is None:
+        raise ImportError("--model gnn needs torch_geometric (pip install torch_geometric)")
     from benchmarl.models import GnnConfig, SequenceModelConfig
 
     gnn = GnnConfig(
@@ -136,7 +151,7 @@ def make_model(name: str, comm_range: float):
         pos_features=2,
         velocity_key="vel",
         vel_features=2,
-        exclude_pos_from_node_features=True,
+        exclude_pos_from_node_features=False,
     )
     return SequenceModelConfig(model_configs=[gnn, MlpConfig.get_from_yaml()], intermediate_sizes=[256])
 
@@ -152,10 +167,10 @@ def main():
             "n_pois": args.n_pois,
             "agents_per_poi": args.agents_per_poi,
             "sensing_range": args.sensing_range,
-            "dim_c": args.dim_c,
+            # "dim_c": args.dim_c,
             "comm_range": args.comm_range,
-            "comm_dropout": args.comm_dropout,
-            "comm_noise": args.comm_noise,
+            # "comm_dropout": args.comm_dropout,
+            # "comm_noise": args.comm_noise,
             "closer_reward_weight": args.closer_reward_weight,
         },
     )
