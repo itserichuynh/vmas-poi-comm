@@ -39,6 +39,7 @@ def parse_args():
     p.add_argument("--device", default="cpu")
     p.add_argument("--poi_speed", type=float, default=None,
                    help="override POI speed (0 = static POIs; default: what the run was trained with)")
+    p.add_argument("--comm_range", type=float, default=None)
     return p.parse_args()
 
 
@@ -64,6 +65,8 @@ def main():
     overrides = {}
     if args.poi_speed is not None:
         overrides["poi_speed"] = args.poi_speed
+    if args.comm_range is not None:
+        overrides['comm_range'] = args.comm_range
     if overrides:
         original_get_env_fun = PoiTask.get_env_fun
 
